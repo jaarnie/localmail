@@ -17,11 +17,14 @@ Read `.claude/tool-registry.yml` — `demo`.
 
 ## Phase 1 — Bring it up
 
-Redis must be running (`redis-cli ping`). Then, from the gem root (`bin/rails` runs `spec/dummy`):
+The dummy captures into its SQLite database by default, so migrate it once. Then, from the gem root (`bin/rails` runs `spec/dummy`):
 
 ```bash
+bin/rails db:migrate
 CAPTURE_EMAILS=true bin/rails server -p 3020
 ```
+
+To demo the Redis store instead, start Redis (`redis-cli ping`) and set `config.store = :redis` in a dummy initializer for the session; remove it afterwards.
 
 Run it in a background shell (or the `localmail-dummy` config in `.claude/launch.json`) and wait for `http://localhost:3020/mail/` to answer.
 
@@ -34,11 +37,12 @@ CAPTURE_EMAILS=true bin/rails runner 'DigestMailer.weekly.deliver_now'          
 
 `capturing?` is true in development once enabled, so these land in the inbox. `NotificationMailer.receipt` is undeclared and is **not** captured — use it to show that.
 
-**The dummy's inbox is its own.** The default namespace includes the app name, so the dummy writes to `localmail:dummy:development` and cannot see another app's captured mail on the same local Redis. If a message you did not send appears anyway, stop: do not screenshot it, because it may be a real sign-in link.
+**The dummy's inbox is its own.** The ActiveRecord store uses the dummy's own database, and the Redis store's default namespace includes the app name (`localmail:dummy:development`), so neither can see another app's captured mail. If a message you did not send appears anyway, stop: do not screenshot it, because it may be a real sign-in link.
 
 | Symptom | Cause |
 |---|---|
-| `Redis::CannotConnectError` | `redis-server` is not running |
+| `no such table: localmail_messages` | `bin/rails db:migrate` not run |
+| `Redis::CannotConnectError` | Using the Redis store and `redis-server` is not running |
 | `/mail` is 404 | Started without `CAPTURE_EMAILS=true` — the controller refuses when not enabled |
 | Mail sent but not in the inbox | The runner was started without `CAPTURE_EMAILS=true`, or the action is not declared |
 | Port already in use | A previous server survived. `lsof -nP -iTCP:3020 -sTCP:LISTEN`, kill by pid |

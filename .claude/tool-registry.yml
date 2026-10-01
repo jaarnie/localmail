@@ -7,11 +7,12 @@
 #
 # Facts about this repo that are easy to get wrong:
 #
-#   * It is a mountable Rails engine with NO database. Redis is the only service, and the
-#     suite needs it running.
+#   * It is a mountable Rails engine with two stores: ActiveRecord (default, one table
+#     shipped as an engine migration) and Redis. The suite runs on the dummy's SQLite and
+#     skips the :redis examples when Redis is not reachable, except on CI.
 #   * bin/ci runs RSpec too — the suite takes seconds, so there is no reason to leave it out.
 #   * Style is rubocop-rails-omakase: double quotes and spaces inside array brackets.
-#   * The default namespace is localmail:<app>:<env>, so the dummy app writes to
+#   * The Redis store's default namespace is localmail:<app>:<env>, so the dummy writes to
 #     localmail:dummy:development and the suite to localmail:dummy:test. Neither collides
 #     with another app on the same local Redis.
 
@@ -25,11 +26,11 @@ compound_engineering:
 project:
   kind: >-
     A Ruby gem: a mountable Rails engine that captures outgoing mail for the mailer
-    actions a host app names, stores it in Redis, and serves it from an inbox mounted
+    actions a host app names, stores it in the host's database or Redis, and serves it from an inbox mounted
     in the host (conventionally at /mail).
   stack: >-
-    Ruby 3.4.7 (.ruby-version) · Rails >= 7.1 (dummy runs 8.1) · redis-rb ·
-    connection_pool · mail · RSpec · rubocop-rails-omakase · bundler-audit · lefthook
+    Ruby 3.4.7 (.ruby-version) · Rails >= 7.1 (dummy runs 8.1, on SQLite) · mail ·
+    redis-rb + connection_pool (optional, for the :redis store) · RSpec · rubocop-rails-omakase · bundler-audit · lefthook
   remote: "git@github.com:jaarnie/localmail.git"
   docs:
     claude: "CLAUDE.md"
@@ -37,9 +38,14 @@ project:
     changelog: "CHANGELOG.md"
     plan: ".claude/local/in_progress/ (gitignored) — how it works, and what is next"
   conventions:
-    no_database: >-
-      No ActiveRecord. Nothing here may add a migration, a model, or a dependency on
-      the host's database.
+    stores: >-
+      lib/localmail/stores/active_record.rb (default) and redis.rb implement one
+      contract (save, all, find, delete, clear) and both run the shared examples in
+      spec/support/shared_examples/a_localmail_store.rb. The redis gems are not gemspec
+      dependencies: the Redis store requires them lazily and says so if missing.
+    database: >-
+      One table, localmail_messages, from db/migrate. Hosts copy it with
+      `bin/rails localmail:install:migrations`. Never edit a shipped migration; add one.
     config: >-
       Every host-specific choice goes through Localmail.configure
       (lib/localmail/configuration.rb). Keep the surface small: a new setting is a
@@ -54,7 +60,7 @@ hooks:
     rubocop: "bin/rubocop --force-exclusion -A {staged_files}  (autocorrects and restages)"
     bundler_audit: "bundle exec bundler-audit check --update"
   pre_push:
-    rspec: "bundle exec rspec  (needs redis-server running)"
+    rspec: "bundle exec rspec  (skips the :redis examples without Redis)"
   install: "lefthook install"
   never: "--no-verify, except inside /draft-pr when the user invoked it by name"
 
@@ -70,7 +76,8 @@ qa:
   all_note: >-
     RuboCop, gem audit and RSpec, continuing past a failure and printing a summary.
     That is the whole suite — there is nothing else to run.
-  services: "redis-server (check with: redis-cli ping)"
+  services: "none required; redis-server for the :redis examples (redis-cli ping)"
+  dummy_db: "bin/rails db:migrate  (dummy development database; the suite migrates its own)"
   rspec: "bundle exec rspec {path}"
   rspec_line: "bundle exec rspec {path}:{line}"
   rubocop: "bin/rubocop"
