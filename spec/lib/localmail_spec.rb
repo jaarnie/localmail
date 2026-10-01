@@ -73,12 +73,24 @@ RSpec.describe Localmail do
     end
   end
 
-  describe ".redis" do
-    it "builds the client from a configured callable" do
-      client = Redis.new
-      described_class.configure { |config| config.redis = -> { client } }
+  describe ".store" do
+    it "resolves :redis to the Redis store" do
+      described_class.configure { |config| config.store = :redis }
 
-      expect(described_class.redis.ping).to eq("PONG")
+      expect(described_class.store.class.name).to eq("Localmail::Stores::Redis")
+    end
+
+    it "uses a store object as given" do
+      custom = Object.new
+      described_class.configure { |config| config.store = custom }
+
+      expect(described_class.store).to be(custom)
+    end
+
+    it "refuses an unknown store name" do
+      described_class.configure { |config| config.store = :memcached }
+
+      expect { described_class.store }.to raise_error(ArgumentError, /Unknown Localmail store :memcached/)
     end
   end
 end

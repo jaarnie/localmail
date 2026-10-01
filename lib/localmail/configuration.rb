@@ -2,10 +2,12 @@ module Localmail
   # Settings for capture, storage and the inbox. Set them with Localmail.configure.
   class Configuration
     attr_accessor :ttl, :max_messages, :capture_in_test, :parent_controller, :authenticate
-    attr_writer :enabled, :redis, :namespace
+    attr_accessor :store, :redis
+    attr_writer :enabled, :namespace
 
     def initialize
       @enabled = nil
+      @store = :active_record
       @redis = nil
       @namespace = nil
       @ttl = 3.days
@@ -21,18 +23,10 @@ module Localmail
       @enabled.respond_to?(:call) ? @enabled.call == true : @enabled == true
     end
 
-    # Scoped to the app and environment so neither another app on the same local Redis
-    # nor a test run can read or wipe the inbox open in the browser.
+    # The :redis store's key prefix. Scoped to the app and environment so neither another
+    # app on the same local Redis nor a test run can read or wipe the inbox.
     def namespace
       @namespace || "localmail:#{Rails.application.class.module_parent_name.underscore}:#{Rails.env}"
-    end
-
-    def build_redis
-      case @redis
-      when nil then ConnectionPool::Wrapper.new { Redis.new }
-      when Proc then ConnectionPool::Wrapper.new { @redis.call }
-      else @redis
-      end
     end
   end
 end

@@ -15,7 +15,7 @@ description: >-
 
 | Spec | Lives in | Tests |
 |---|---|---|
-| Library | `spec/lib/` | `Localmail` itself, `Store`, `Message`, configuration — plain Ruby against Redis |
+| Library | `spec/lib/` | `Localmail` itself, each store, `Message`, the delivery method, configuration |
 | Mailers | `spec/mailers/` | The `capture_in_localmail` macro, through the dummy's real mailers |
 | Requests | `spec/requests/` | The inbox, through the dummy app's mount at `/mail` |
 
@@ -28,7 +28,9 @@ The dummy app (`spec/dummy`) is the host. When a spec needs a mailer shape that 
 - Configure inside the example or its `before`, with `Localmail.configure { |config| ... }`. Never set config at file level; it would leak if the reset ever moved.
 - Do not add your own `Store.clear`. If a spec needs one, the global hook is broken — fix that.
 - Prefer real configuration over stubs. Stub `Localmail.capturing?` only where the test environment itself is the obstacle (the capture spec).
-- Tests use the `localmail:dummy:test` namespace, so they never touch a development inbox on the same Redis.
+- Examples run in a transaction against the dummy's SQLite (`use_transactional_fixtures`), on the ActiveRecord store.
+- Tag an example or group `:redis` to run it on the Redis store: the helper switches the store and clears it, and skips the group when Redis is not reachable. They use the `localmail:dummy:test` namespace, so they never touch a development inbox.
+- **Store behaviour goes in the shared examples** (`spec/support/shared_examples/a_localmail_store.rb`), so both stores prove it. Only what is genuinely store-specific (Redis key expiry, row pruning) goes in a store's own spec.
 
 ## Assert on what a person sees
 
@@ -57,7 +59,7 @@ The `describe` / `context` / `it` names are the documentation. If an example nee
 ## Running them
 
 ```bash
-bundle exec rspec                       # whole suite, needs redis-server
+bundle exec rspec                       # whole suite; :redis examples skip without Redis
 bundle exec rspec spec/requests         # one area
-bundle exec rspec spec/lib/localmail/store_spec.rb:42
+bundle exec rspec spec/lib/localmail/stores/active_record_spec.rb:42
 ```

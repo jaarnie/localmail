@@ -4,13 +4,15 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-Localmail is a mountable Rails engine that captures outgoing mail into Redis and serves it
-from an inbox. It exists for deployed non-production environments (review apps, staging),
+Localmail is a mountable Rails engine that captures outgoing mail into the host's database
+(or Redis) and serves it from an inbox. It exists for deployed non-production environments (review apps, staging),
 where the mail provider will not deliver and filesystem tools such as mailcatcher or
 letter_opener_web cannot work because mail is sent from one process and read from another.
 
 It was extracted from a Rails monolith where it was first built. Everything is namespaced
-under `Localmail`. There is **no database**: Redis is the only service the gem or its suite needs.
+under `Localmail`. Storage is pluggable: `Stores::ActiveRecord` (the default, one table) or
+`Stores::Redis`. The suite runs on the dummy app's SQLite and needs nothing running; the
+`:redis` examples skip locally when Redis is not reachable.
 
 The full design, with every decision and its reason, is in
 `.claude/local/in_progress/localmail-gem.md`. Read it before changing behaviour.
@@ -19,10 +21,11 @@ The full design, with every decision and its reason, is in
 
 ```sh
 bin/ci                                        # RuboCop, gem audit, RSpec: every check
-bundle exec rspec                             # suite (needs redis-server running)
+bundle exec rspec                             # suite (:redis examples skip without Redis)
 bundle exec rspec spec/requests/inbox_spec.rb # one file
 bin/rubocop                                   # lint (rubocop-rails-omakase)
 bin/rubocop -A {paths}                        # ...and autocorrect
+bin/rails db:migrate                          # the dummy's development database
 CAPTURE_EMAILS=true bin/rails server -p 3020  # dummy app, inbox at /mail
 ```
 
@@ -37,9 +40,12 @@ bypass it with `--no-verify`**; `/draft-pr` is the one documented exception.
 
 | Path | What |
 |---|---|
-| `lib/localmail.rb` | `Localmail.configure`, `enabled?`, `capturing?`, `redis` |
+| `lib/localmail.rb` | `Localmail.configure`, `enabled?`, `capturing?`, `store` (resolves `config.store`) |
 | `lib/localmail/configuration.rb` | Every setting and its default |
-| `lib/localmail/store.rb` | Redis reads and writes: an id list plus one key per message |
+| `lib/localmail/store.rb` | Facade: `Store.save/all/find/delete/clear` delegate to `Localmail.store` |
+| `lib/localmail/stores/active_record.rb` | Default store: the `localmail_messages` table |
+| `lib/localmail/stores/redis.rb` | Redis store: an id list plus one key per message. Requires the redis gems lazily |
+| `db/migrate/` | The table's migration. Hosts copy it with `bin/rails localmail:install:migrations` |
 | `lib/localmail/message.rb` | One captured email, parts exposed as UTF-8 |
 | `lib/localmail/delivery_method.rb` | ActionMailer delivery method, registered as `:localmail` |
 | `lib/localmail/capture.rb` | The `capture_in_localmail` macro, included into every mailer |
@@ -66,8 +72,15 @@ ActionMailer loads, before Zeitwerk would autoload anything from `app/`.
 - **Capture is opt-in per action.** Never add a way to capture every mailer globally without
   the user asking for it explicitly. Its blast radius in production is every email the
   host sends.
-- **Bounded storage.** Every write sets a TTL and trims the list, and anything trimmed has its
-  message key deleted in the same transaction.
+- **Bounded storage, in both stores.** Every save prunes past the TTL and the cap, in the same
+  transaction as the write.
+- **The stores share one contract** and one set of shared examples
+  (`spec/support/shared_examples/a_localmail_store.rb`). Change behaviour in both or neither.
+- **Redis is optional.** `redis` and `connection_pool` are not gemspec dependencies; only
+  `stores/redis.rb` requires them.
+- **Never edit a shipped migration.** Hosts have run it. Add a new one.
+- **A failed capture is logged, then re-raised.** With `raise_delivery_errors` off, ActionMailer
+  swallows the error, and the log line is the only trace a message was lost.
 
 ## Ruby style
 

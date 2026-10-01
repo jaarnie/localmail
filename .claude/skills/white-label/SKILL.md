@@ -45,7 +45,8 @@ Read the diff, not a summary of it.
 | A default that turns capture **on** | Off must stay the default. A host that installs and forgets must keep sending |
 | An environment guard (`Rails.env.production?`) added | Review apps run as production. A guard silently breaks the case this exists for — it needs the user's agreement |
 | An inbox action that skips `require_enabled` or the `authenticate` hook | Captured mail holds sign-in links and tokens |
-| Unbounded Redis writes — no TTL, no cap | The host's Redis is usually shared with Sidekiq or a cache |
+| Unbounded writes — no TTL, no cap, in either store | The host's Redis is usually shared with Sidekiq, and its database with everything |
+| A hard `require "redis"` outside `lib/localmail/stores/redis.rb`, or redis back in the gemspec | Forces Redis on hosts that chose the database store |
 | Captured HTML rendered outside the sandboxed iframe | It is untrusted markup |
 
 ### C. Configuration surface
@@ -60,7 +61,7 @@ Read the diff, not a summary of it.
 
 For anything new, one sentence each:
 
-1. **What does a host have to have for this to work?** "Nothing beyond Rails and Redis" is the target.
+1. **What does a host have to have for this to work?** "Nothing beyond Rails and its database" is the target; Redis is an option, never a requirement.
 2. **If a second host with different auth, Redis and branding installed this tomorrow, what would break?**
 3. **Who owns this decision — the gem or the host?** Name it.
 

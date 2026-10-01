@@ -13,16 +13,16 @@ disable-model-invocation: true
 
 > `bin/ci` is the whole suite here: RuboCop (omakase), bundler-audit and RSpec. The specs take seconds, so unlike a big app nothing is left out. There is no coverage gate.
 
-## Phase 0 — Redis must be up
+## Phase 0 — Services
 
-The gem has no database. Redis is the only service, and every Store, capture and request spec talks to it:
+The default store is ActiveRecord, and the suite migrates the dummy's SQLite database itself, so nothing needs to be running for most of it. The `:redis` examples (the Redis store and the shared store examples run against it) need Redis:
 
 ```bash
 redis-cli ping          # expect PONG
 redis-server            # if not
 ```
 
-A `Redis::CannotConnectError` across the suite is an environment problem, not a test failure. Say so and stop; do not "fix" specs that fail for this reason.
+With no Redis, those examples are **skipped** with a warning, not failed, so a green run without Redis has not tested the Redis store. Say so in the report. On CI (`CI` set) a missing Redis aborts the run instead.
 
 ## Phase 1 — Run the checks (no code changes yet)
 
@@ -59,7 +59,8 @@ Escalate instead of weakening a threshold: if a fix needs a cop disabled or a sp
 
 | Symptom | Likely cause |
 |---|---|
-| `Redis::CannotConnectError` everywhere | `redis-server` is not running (Phase 0) |
+| "skipping the :redis examples" warning | Redis is not reachable locally (Phase 0). The Redis store went untested |
+| `ActiveRecord::StatementInvalid: no such table: localmail_messages` | The migration in `db/migrate` changed without the dummy's test database following. Delete `spec/dummy/db/test.sqlite3` and re-run |
 | A Store spec sees messages it did not write | Something skipped `Localmail::Store.clear` / `Localmail.reset_config!` — both run around every example in `spec/rails_helper.rb` |
 | A capture spec finds `ActionMailer::Base.deliveries` empty | `capture_in_test` or a stubbed `capturing?` leaked out of its example |
 | `uninitialized constant` for a host class in the engine | The engine assumed something about its host. Make it configuration, not a reference |
@@ -92,7 +93,7 @@ Then remind the user that full `/qa` is still required before commit.
 ## When to escalate
 
 - `bundle install` needed, or a gem fails to build
-- Redis is down (Phase 0)
+- Redis is down and the change touches the Redis store (Phase 0)
 - A failure needs a product decision — a change to the public configuration surface is one
 - A fix would need a disabled cop or a deleted spec
 

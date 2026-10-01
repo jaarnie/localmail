@@ -1,5 +1,3 @@
-require "connection_pool"
-require "redis"
 require "mail"
 require "active_support"
 require "active_support/core_ext/integer/time"
@@ -12,8 +10,13 @@ require "localmail/delivery_method"
 require "localmail/capture"
 require "localmail/engine"
 
-# Captures outgoing mail into Redis and serves it from a mountable inbox.
+# Captures outgoing mail and serves it from a mountable inbox.
 module Localmail
+  STORES = {
+    active_record: [ "localmail/stores/active_record", "Localmail::Stores::ActiveRecord" ],
+    redis: [ "localmail/stores/redis", "Localmail::Stores::Redis" ]
+  }.freeze
+
   class << self
     def config
       @config ||= Configuration.new
@@ -21,15 +24,15 @@ module Localmail
 
     def configure
       yield config
+      @store = nil
     end
 
     def reset_config!
       @config = nil
-      @redis = nil
+      @store = nil
     end
 
-    # Whether capture is switched on at all. Also decides whether the host draws the
-    # inbox route, which happens once at boot.
+    # Whether capture is switched on at all. Also decides whether the inbox serves.
     def enabled?
       config.enabled?
     end
@@ -39,8 +42,21 @@ module Localmail
       enabled? && (config.capture_in_test || !Rails.env.test?)
     end
 
-    def redis
-      @redis ||= config.build_redis
+    def store
+      @store ||= build_store
+    end
+
+    private
+
+    def build_store
+      choice = config.store
+      return choice unless choice.is_a?(Symbol)
+
+      path, class_name = STORES.fetch(choice) do
+        raise ArgumentError, "Unknown Localmail store #{choice.inspect}. Use one of #{STORES.keys.inspect} or a store object."
+      end
+      require path
+      class_name.constantize.new
     end
   end
 end

@@ -54,7 +54,8 @@ It fetches, branches from the latest `origin/main`, and refuses `main` or an exi
 
 ## Phase 4 — Constraints
 
-- **No database.** No ActiveRecord, no migrations, no models. State lives in Redis, under the configured namespace, bounded by `ttl` and `max_messages`.
+- **Two stores, one contract.** Captured mail lives in the host's database (`Stores::ActiveRecord`, the default) or Redis (`Stores::Redis`), chosen by `config.store`. Both implement `save`, `all`, `find`, `delete` and `clear`, both are bounded by `ttl` and `max_messages`, and both run the shared examples in `spec/support/shared_examples/a_localmail_store.rb`. A behaviour change to one is a change to both.
+- **One table, shipped as an engine migration** (`db/migrate`, copied with `bin/rails localmail:install:migrations`). A change to it is a new migration; never edit a shipped one, because hosts have already run it. Nothing else may touch the host's database.
 - **Assume nothing about the host.** No Devise, no Tailwind, no asset pipeline, no particular Redis, no brand. Anything host-specific is a `Localmail.configure` setting with a sensible default — and every new setting is forever, so prefer none.
 - **The inbox is self-contained.** Styles are inline (`app/views/localmail/_styles.css.erb`), classes prefixed `lm-`, no JavaScript. It must render in a host with a strict CSP (the style tag carries the nonce).
 - **Capture stays opt-in per action.** Nothing may divert mail the host has not named with `capture_in_localmail`.
