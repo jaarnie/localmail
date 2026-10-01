@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+usage() {
+  cat <<'EOF'
+Usage: bin/squash -m "commit message" [-b BASE_BRANCH]
+
+Squash all commits on the current branch since merge-base with BASE_BRANCH
+into a single commit. Pre-commit hooks run on the new commit.
+
+Options:
+  -m, --message MSG   Commit message (required unless --keep-message)
+  --keep-message      Reuse the current HEAD commit message
+  -b, --base BRANCH   Base branch on origin (default: main)
+  --dry-run           Show what would happen without changing anything
+  -h, --help          Show this help
+
+Safety: refuses to run on main/master or with a dirty working tree.
+EOF
+}
+
+BASE_BRANCH="main"
+MESSAGE=""
+KEEP_MESSAGE=false
+DRY_RUN=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--message)
+      MESSAGE="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    --keep-message)
+      KEEP_MESSAGE=true
+      shift
+      ;;
+    -b|--base)
+      BASE_BRANCH="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+CURRENT_BRANCH="$(git branch --show-current)"
+if [[ -z "$CURRENT_BRANCH" ]]; then
+  echo "error: detached HEAD; checkout a branch first" >&2
+  exit 1
+fi
+
+if [[ "$CURRENT_BRANCH" == "main" || "$CURRENT_BRANCH" == "master" ]]; then
+  echo "error: refuse to squash on ${CURRENT_BRANCH}" >&2
+  exit 1
+fi
+
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "error: working tree not clean; commit or stash changes first" >&2
+  exit 1
+fi
+
+REMOTE="origin/${BASE_BRANCH}"
+if ! git rev-parse --verify "${REMOTE}" >/dev/null 2>&1; then
+  echo "error: ${REMOTE} not found; run: git fetch origin" >&2
+  exit 1
+fi
+
+BASE="$(git merge-base HEAD "${REMOTE}")"
+COUNT="$(git rev-list --count "${BASE}..HEAD")"
+
+if [[ "${COUNT}" -le 1 ]]; then
+  echo "Already a single commit since ${BASE_BRANCH} (${COUNT} on top of merge-base)."
+  exit 0
+fi
+
+if [[ "${KEEP_MESSAGE}" == true ]]; then
+  MESSAGE="$(git log -1 --format=%B)"
+fi
+
+if [[ -z "${MESSAGE}" ]]; then
+  echo "error: commit message required (-m or --keep-message)" >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ "${DRY_RUN}" == true ]]; then
+  echo "Would squash ${COUNT} commits on ${CURRENT_BRANCH} since origin/${BASE_BRANCH}"
+  echo "Merge-base: ${BASE}"
+  echo "--- commit message ---"
+  printf '%s\n' "${MESSAGE}"
+  exit 0
+fi
+
+git reset --soft "${BASE}"
+git commit -m "${MESSAGE}"
+
+echo "Squashed ${COUNT} commits into one on ${CURRENT_BRANCH} (base: origin/${BASE_BRANCH})"

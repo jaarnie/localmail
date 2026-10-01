@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Every check, in one command. Keep in sync with lefthook.yml, .github/workflows/ci.yml
+# and .claude/tool-registry.yml. Runs every step even after one fails.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+failed=()
+
+step() {
+  local name="$1"; shift
+  printf '\n\033[1m== %s\033[0m  (%s)\n' "$name" "$*"
+  if "$@"; then
+    results+=("ok    $name")
+  else
+    results+=("FAIL  $name")
+    failed+=("$name")
+  fi
+}
+
+results=()
+step "Style: Ruby"         bin/rubocop
+step "Security: Gem audit" bundle exec bundler-audit check --update
+step "Tests: RSpec"        bundle exec rspec
+
+printf '\n\033[1m== Summary\033[0m\n'
+printf '%s\n' "${results[@]}"
+
+[[ ${#failed[@]} -eq 0 ]]

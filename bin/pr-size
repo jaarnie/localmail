@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+usage() {
+  cat <<'EOF'
+Usage: bin/pr-size [-b BASE_BRANCH] [-m MAX_FILES]
+
+Count files changed vs BASE_BRANCH. Exits 1 if over MAX_FILES.
+
+Options:
+  -b, --base BRANCH   Base branch on origin (default: main)
+  -m, --max N         Max files allowed (default: 30)
+  -h, --help          Show this help
+EOF
+}
+
+BASE_BRANCH="main"
+MAX_FILES=30
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -b|--base)
+      BASE_BRANCH="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    -m|--max)
+      MAX_FILES="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+REMOTE="origin/${BASE_BRANCH}"
+if ! git rev-parse --verify "${REMOTE}" >/dev/null 2>&1; then
+  echo "error: ${REMOTE} not found; run: git fetch origin" >&2
+  exit 1
+fi
+
+FILE_COUNT="$(git diff --name-only "${REMOTE}...HEAD" | wc -l | tr -d ' ')"
+
+echo "Files changed vs ${REMOTE}: ${FILE_COUNT} (limit: ${MAX_FILES})"
+
+if [[ "${FILE_COUNT}" -gt "${MAX_FILES}" ]]; then
+  echo "error: exceeds limit — split the branch or get user approval" >&2
+  exit 1
+fi

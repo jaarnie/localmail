@@ -1,0 +1,88 @@
+<% content_for :title, @message.subject.presence || "(no subject)" %>
+<% views = [] %>
+<% views << [ :html, "HTML" ] if @message.preview_html.present? %>
+<% views << [ :text, "Plain text" ] if @message.text_body.present? %>
+<% views << [ :raw, "Source" ] %>
+
+<div class="lm-toolbar">
+  <div class="lm-container lm-toolbar-inner">
+    <%= link_to "← All mail", root_path, class: "lm-link" %>
+    <div class="lm-toolbar-actions">
+      <%= button_to "Delete", message_path(@message.id), method: :delete, class: "lm-button lm-button-danger" %>
+    </div>
+  </div>
+</div>
+
+<div class="lm-container lm-page">
+  <div class="lm-card">
+    <% views.each_index do |i| %>
+      <input class="lm-sr-only" type="radio" name="view" id="view-<%= i %>" <%= "checked" if i.zero? %>>
+    <% end %>
+
+    <% if @message.preview_html.present? %>
+      <input class="lm-sr-only" type="radio" name="viewport" id="vp-desktop" aria-label="Desktop preview width" checked>
+      <input class="lm-sr-only" type="radio" name="viewport" id="vp-mobile" aria-label="Mobile preview width">
+    <% end %>
+
+    <div class="lm-meta">
+      <h1><%= @message.subject.presence || "(no subject)" %></h1>
+
+      <dl class="lm-headers">
+        <dt>From</dt>
+        <dd><%= Array(@message.from).join(", ") %></dd>
+        <dt>To</dt>
+        <dd><%= Array(@message.to).join(", ") %></dd>
+        <% if @message.cc.present? %>
+          <dt>Cc</dt>
+          <dd><%= Array(@message.cc).join(", ") %></dd>
+        <% end %>
+        <dt>Sent</dt>
+        <dd><%= @message.date&.strftime("%d %b %Y, %H:%M:%S") || "Unknown" %></dd>
+      </dl>
+    </div>
+
+    <div class="lm-tabs">
+      <% views.each_with_index do |(_view, label), i| %>
+        <label for="view-<%= i %>" class="lm-tab-<%= i %>"><%= label %></label>
+      <% end %>
+    </div>
+
+    <% if @message.preview_html.present? %>
+      <div class="lm-viewport">
+        <label for="vp-desktop" class="lm-vp-desktop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+            <path d="M8 21h8"></path>
+            <path d="M12 17v4"></path>
+          </svg>
+          Desktop
+        </label>
+        <label for="vp-mobile" class="lm-vp-mobile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="5" y="2" width="14" height="20" rx="2"></rect>
+            <path d="M12 18h.01"></path>
+          </svg>
+          Mobile
+        </label>
+      </div>
+    <% end %>
+
+    <div class="lm-panels">
+      <% views.each_with_index do |(view, _label), i| %>
+        <section class="lm-panel lm-p<%= i %>">
+          <% case view %>
+          <% when :html %>
+            <iframe sandbox="allow-popups allow-popups-to-escape-sandbox"
+                    srcdoc="<%= @message.preview_html %>"
+                    title="Email preview"
+                    class="lm-frame"></iframe>
+          <% when :text %>
+            <pre class="lm-source"><%= @message.text_body %></pre>
+          <% else %>
+            <pre class="lm-source"><%= @message.raw %></pre>
+          <% end %>
+        </section>
+      <% end %>
+    </div>
+  </div>
+</div>

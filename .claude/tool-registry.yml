@@ -1,0 +1,132 @@
+# localmail — compound engineering manifest.
+#
+# One place for "which command do I actually run", so skills point at real commands
+# instead of improvising shell. The check list lives in four places and they must agree:
+# lefthook.yml (git hooks), bin/ci (local), .github/workflows/ci.yml (GitHub) and the
+# hooks/ci/qa sections below.
+#
+# Facts about this repo that are easy to get wrong:
+#
+#   * It is a mountable Rails engine with NO database. Redis is the only service, and the
+#     suite needs it running.
+#   * bin/ci runs RSpec too — the suite takes seconds, so there is no reason to leave it out.
+#   * Style is rubocop-rails-omakase: double quotes and spaces inside array brackets.
+#   * The default namespace is localmail:<app>:<env>, so the dummy app writes to
+#     localmail:dummy:development and the suite to localmail:dummy:test. Neither collides
+#     with another app on the same local Redis.
+
+compound_engineering:
+  root: "."
+  skills: ".claude/skills"
+  lefthook_config: "lefthook.yml"
+  ci_local: "bin/ci"
+  ci_workflow: ".github/workflows/ci.yml"
+
+project:
+  kind: >-
+    A Ruby gem: a mountable Rails engine that captures outgoing mail for the mailer
+    actions a host app names, stores it in Redis, and serves it from an inbox mounted
+    in the host (conventionally at /mail).
+  stack: >-
+    Ruby 3.4.7 (.ruby-version) · Rails >= 7.1 (dummy runs 8.1) · redis-rb ·
+    connection_pool · mail · RSpec · rubocop-rails-omakase · bundler-audit · lefthook
+  remote: "git@github.com:jaarnie/localmail.git"
+  docs:
+    claude: "CLAUDE.md"
+    readme: "README.md — the public install and configuration guide"
+    changelog: "CHANGELOG.md"
+    plan: ".claude/local/in_progress/ (gitignored) — how it works, and what is next"
+  conventions:
+    no_database: >-
+      No ActiveRecord. Nothing here may add a migration, a model, or a dependency on
+      the host's database.
+    config: >-
+      Every host-specific choice goes through Localmail.configure
+      (lib/localmail/configuration.rb). Keep the surface small: a new setting is a
+      public API that has to be documented in the README and kept forever.
+    ui: >-
+      The inbox is the only UI. Its CSS is inline in the layout
+      (app/views/localmail/_styles.css.erb) with no asset pipeline, Tailwind or JS, so
+      it works in any host. Classes are prefixed lm-.
+
+hooks:
+  pre_commit:
+    rubocop: "bin/rubocop --force-exclusion -A {staged_files}  (autocorrects and restages)"
+    bundler_audit: "bundle exec bundler-audit check --update"
+  pre_push:
+    rspec: "bundle exec rspec  (needs redis-server running)"
+  install: "lefthook install"
+  never: "--no-verify, except inside /draft-pr when the user invoked it by name"
+
+ci:
+  workflow: ".github/workflows/ci.yml"
+  local: "bin/ci"
+  job: >-
+    One job, `checks`, with a redis:7 service container: RuboCop, bundler-audit, RSpec.
+  secrets: "none"
+
+qa:
+  all: "bin/ci"
+  all_note: >-
+    RuboCop, gem audit and RSpec, continuing past a failure and printing a summary.
+    That is the whole suite — there is nothing else to run.
+  services: "redis-server (check with: redis-cli ping)"
+  rspec: "bundle exec rspec {path}"
+  rspec_line: "bundle exec rspec {path}:{line}"
+  rubocop: "bin/rubocop"
+  rubocop_fix: "bin/rubocop -A {paths}"
+  gem_audit: "bundle exec bundler-audit check --update"
+  boundary_audit: "invoke /white-label"
+
+release:
+  base_branch: main
+  qa_skill: qa
+  review_skill: review
+  squash: "bin/squash -m {message}"
+  create_pr: "bin/create-pr"
+  draft_pr: "bin/create-pr --draft"
+  pr_size: "bin/pr-size"
+  max_pr_files: 30
+  split_commits: "bin/split-commits {plan|prepare|verify}"
+  version_file: "lib/localmail/version.rb"
+  gem_release: >-
+    Bump lib/localmail/version.rb, move CHANGELOG.md's Unreleased entries under the new
+    version, merge to main, then tag vX.Y.Z on main and push the tag. Hosts install from
+    GitHub (`gem "localmail", github: "jaarnie/localmail"`, optionally with tag:).
+    Nothing is published to RubyGems unless the user asks for it explicitly.
+  build_check: "gem build localmail.gemspec  (then delete the .gem; *.gem is gitignored)"
+
+issue_start:
+  base_branch: main
+  branch: "bin/start-branch {branch_name}"
+  branch_stash: "bin/start-branch {branch_name} --stash"
+  branch_manual: "git fetch origin && git switch -c {branch_name} origin/main"
+  naming: "feature/short-description · fix/short-description · chore/short-description"
+  max_pr_files: 30
+  pipeline: "implement → /qa → /demo (inbox changed) → await approval → /release"
+
+demo:
+  server: "CAPTURE_EMAILS=true bin/rails server -p 3020  (from the gem root; runs spec/dummy)"
+  launch_config: ".claude/launch.json → localmail-dummy"
+  base_url: "http://localhost:3020/mail/"
+  send_captured: "CAPTURE_EMAILS=true bin/rails runner 'NotificationMailer.sign_in_link.deliver_now'"
+  send_bare_capture: "CAPTURE_EMAILS=true bin/rails runner 'DigestMailer.weekly.deliver_now'"
+  send_uncaptured: "NotificationMailer.receipt — not captured; goes to the dummy's SMTP config"
+  auth: "none — the dummy mounts the engine with no authentication"
+  stop: "kill $(lsof -nP -iTCP:3020 -sTCP:LISTEN -t)"
+
+paths:
+  entry: "lib/localmail.rb"
+  configuration: "lib/localmail/configuration.rb"
+  store: "lib/localmail/store.rb"
+  message: "lib/localmail/message.rb"
+  delivery_method: "lib/localmail/delivery_method.rb"
+  capture_macro: "lib/localmail/capture.rb"
+  engine: "lib/localmail/engine.rb"
+  controllers: "app/controllers/localmail"
+  views: "app/views/localmail"
+  layout: "app/views/layouts/localmail/application.html.erb"
+  styles: "app/views/localmail/_styles.css.erb"
+  routes: "config/routes.rb (engine routes)"
+  specs: "spec (lib/, mailers/, requests/)"
+  dummy: "spec/dummy (mailers in spec/dummy/app/mailers; mounts at /mail)"

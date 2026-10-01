@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+usage() {
+  cat <<'EOF'
+Usage: bin/create-pr [-b BASE_BRANCH] [-m MAX_FILES] [-t TITLE] [--body TEXT | --body-file PATH] [--draft]
+
+Create a pull request for the current branch (or open an existing one in the browser).
+
+Runs bin/pr-size before creating. If a PR already exists for this branch, opens it
+instead of creating a duplicate.
+
+Options:
+  -b, --base BRANCH     Base branch on origin (default: main)
+  -m, --max N           Max files allowed via bin/pr-size (default: 30)
+  -t, --title TITLE     PR title (default: first line of HEAD commit)
+  --body TEXT           PR body (default: rest of HEAD commit + test plan)
+  --body-file PATH      Read PR body from file
+  --draft               Open the PR as a draft (used by the /draft-pr skill)
+  --no-open             Do not open the PR in a browser
+  --dry-run             Show what would happen without creating or opening
+  -h, --help            Show this help
+
+Safety: refuses main/master, requires a pushed upstream, and requires gh CLI.
+
+Browser open is detached (open/xdg-open in background) so the script exits immediately.
+EOF
+}
+
+open_pr_in_browser() {
+  local url="$1"
+  [[ "${OPEN_BROWSER}" == true ]] || return 0
+
+  if command -v open >/dev/null 2>&1; then
+    open "${url}" >/dev/null 2>&1 &
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "${url}" >/dev/null 2>&1 &
+  fi
+}
+
+BASE_BRANCH="main"
+MAX_FILES=30
+TITLE=""
+BODY=""
+BODY_FILE=""
+OPEN_BROWSER=true
+DRY_RUN=false
+DRAFT=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -b|--base)
+      BASE_BRANCH="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    -m|--max)
+      MAX_FILES="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    -t|--title)
+      TITLE="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    --body)
+      BODY="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    --body-file)
+      BODY_FILE="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    --draft)
+      DRAFT=true
+      shift
+      ;;
+    --no-open)
+      OPEN_BROWSER=false
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "error: gh CLI not found; install GitHub CLI" >&2
+  exit 1
+fi
+
+CURRENT_BRANCH="$(git branch --show-current)"
+if [[ -z "$CURRENT_BRANCH" ]]; then
+  echo "error: detached HEAD; checkout a branch first" >&2
+  exit 1
+fi
+
+if [[ "$CURRENT_BRANCH" == "main" || "$CURRENT_BRANCH" == "master" ]]; then
+  echo "error: refuse to create PR from ${CURRENT_BRANCH}" >&2
+  exit 1
+fi
+
+REMOTE="origin/${BASE_BRANCH}"
+if ! git rev-parse --verify "${REMOTE}" >/dev/null 2>&1; then
+  echo "error: ${REMOTE} not found; run: git fetch origin" >&2
+  exit 1
+fi
+
+if ! git rev-parse --verify "@{u}" >/dev/null 2>&1; then
+  echo "error: no upstream for ${CURRENT_BRANCH}; run: git push -u origin HEAD" >&2
+  exit 1
+fi
+
+LOCAL_SHA="$(git rev-parse HEAD)"
+UPSTREAM_SHA="$(git rev-parse '@{u}')"
+if [[ "${LOCAL_SHA}" != "${UPSTREAM_SHA}" ]]; then
+  echo "error: branch not pushed; local ${LOCAL_SHA:0:7} != upstream ${UPSTREAM_SHA:0:7}" >&2
+  echo "Run: git push" >&2
+  exit 1
+fi
+
+if [[ -n "${BODY_FILE}" ]]; then
+  if [[ ! -f "${BODY_FILE}" ]]; then
+    echo "error: body file not found: ${BODY_FILE}" >&2
+    exit 1
+  fi
+  BODY="$(cat "${BODY_FILE}")"
+fi
+
+if [[ -z "${TITLE}" ]]; then
+  TITLE="$(git log -1 --format=%s)"
+fi
+
+if [[ -z "${BODY}" ]]; then
+  COMMIT_BODY="$(git log -1 --format=%b | sed '/^$/d')"
+  BODY="## Summary
+${COMMIT_BODY}
+
+## Test plan
+- [ ] bin/ci green (RuboCop, gem audit, RSpec)
+- [ ] CI green on PR"
+fi
+
+EXISTING_NUMBER="$(gh pr list --head "${CURRENT_BRANCH}" --json number -q '.[0].number' 2>/dev/null || true)"
+
+if [[ -n "${EXISTING_NUMBER}" && "${EXISTING_NUMBER}" != "null" ]]; then
+  PR_URL="$(gh pr view "${EXISTING_NUMBER}" --json url -q .url)"
+  echo "PR already exists: #${EXISTING_NUMBER} ${PR_URL}"
+
+  if [[ "${DRY_RUN}" == true ]]; then
+    echo "Would open in browser: ${PR_URL}"
+    exit 0
+  fi
+
+  if [[ "${OPEN_BROWSER}" == true ]]; then
+    open_pr_in_browser "${PR_URL}"
+  fi
+
+  echo "${PR_URL}"
+  exit 0
+fi
+
+bin/pr-size -b "${BASE_BRANCH}" -m "${MAX_FILES}"
+
+CREATE_ARGS=(--base "${BASE_BRANCH}" --head "${CURRENT_BRANCH}" --title "${TITLE}" --body "${BODY}")
+[[ "${DRAFT}" == true ]] && CREATE_ARGS+=(--draft)
+
+if [[ "${DRY_RUN}" == true ]]; then
+  echo "Would create PR: ${CURRENT_BRANCH} -> origin/${BASE_BRANCH}${DRAFT:+ (draft: ${DRAFT})}"
+  echo "Title: ${TITLE}"
+  echo "--- body ---"
+  printf '%s\n' "${BODY}"
+  exit 0
+fi
+
+PR_URL="$(gh pr create "${CREATE_ARGS[@]}")"
+open_pr_in_browser "${PR_URL}"
+echo "${PR_URL}"

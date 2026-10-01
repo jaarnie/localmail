@@ -1,0 +1,15 @@
+# Keep in sync with bin/ci, .github/workflows/ci.yml and .claude/tool-registry.yml.
+pre-commit:
+  parallel: true
+  commands:
+    rubocop:
+      glob: "*.{rb,rake,gemspec}"
+      run: bin/rubocop --force-exclusion -A {staged_files}
+      stage_fixed: true
+    bundler-audit:
+      run: bundle exec bundler-audit check --update
+
+pre-push:
+  commands:
+    rspec:
+      run: bundle exec rspec

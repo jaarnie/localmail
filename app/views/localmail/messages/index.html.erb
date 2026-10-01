@@ -1,0 +1,47 @@
+<% content_for :title, @messages.any? ? "Inbox (#{@messages.size})" : "Inbox" %>
+
+<div class="lm-toolbar">
+  <div class="lm-container lm-toolbar-inner">
+    <span class="lm-label">Held mail</span>
+    <span class="lm-strong"><%= pluralize(@messages.size, "message") %></span>
+    <span class="lm-small lm-muted">Kept <%= Localmail.config.ttl.inspect %> · newest <%= Localmail.config.max_messages %></span>
+
+    <div class="lm-toolbar-actions">
+      <%= link_to "Refresh", root_path, class: "lm-button" %>
+      <% if @messages.any? %>
+        <%= button_to "Clear all", messages_path, method: :delete, class: "lm-button lm-button-danger" %>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<div class="lm-container lm-page">
+  <% if @messages.empty? %>
+    <div class="lm-card lm-empty">
+      <h1>Nothing held yet</h1>
+      <p>Every email captured while Localmail is on lands here instead of going out. Trigger one and refresh.</p>
+    </div>
+  <% else %>
+    <div class="lm-card">
+      <ul class="lm-list">
+        <% @messages.each do |message| %>
+          <li class="lm-row">
+            <time class="lm-time" datetime="<%= message.date&.iso8601 %>">
+              <span class="lm-time-clock"><%= message.date&.strftime("%H:%M:%S") || "--:--:--" %></span>
+              <span class="lm-label"><%= message.date&.strftime("%d %b") %></span>
+            </time>
+
+            <div class="lm-row-main">
+              <%= link_to message.subject.presence || "(no subject)", message_path(message.id), class: "lm-row-subject" %>
+              <p class="lm-row-to">to <%= Array(message.to).join(", ") %></p>
+            </div>
+
+            <div class="lm-row-delete">
+              <%= button_to "Delete", message_path(message.id), method: :delete, class: "lm-button" %>
+            </div>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+</div>

@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+usage() {
+  cat <<'EOF'
+Usage: bin/split-commits <command> [options]
+
+Organize a large branch into reviewable commits instead of one squash.
+
+Commands:
+  plan      List changed files vs base, grouped by area (default)
+  prepare   Soft-reset to merge-base; leave all changes unstaged for slice commits
+  verify    Ensure each commit since base passes bin/pr-size per commit (optional)
+
+Options:
+  -b, --base BRANCH   Base branch on origin (default: main)
+  --dry-run           Show actions without changing git state
+  -h, --help          Show this help
+
+Workflow (see /split-commits skill):
+  1. bin/split-commits plan -b main
+  2. Propose logical commit slices; get user approval
+  3. bin/split-commits prepare -b main
+  4. For each slice: git add <paths> && git commit -m "..."
+  5. /release with --keep-commits (skip squash) or push for review
+
+Safety: refuses main/master. prepare requires a clean index (commit or stash first).
+EOF
+}
+
+BASE_BRANCH="main"
+DRY_RUN=false
+COMMAND="plan"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    plan|prepare|verify)
+      COMMAND="$1"
+      shift
+      ;;
+    -b|--base)
+      BASE_BRANCH="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+CURRENT_BRANCH="$(git branch --show-current)"
+if [[ -z "$CURRENT_BRANCH" ]]; then
+  echo "error: detached HEAD; checkout a branch first" >&2
+  exit 1
+fi
+
+if [[ "$CURRENT_BRANCH" == "main" || "$CURRENT_BRANCH" == "master" ]]; then
+  echo "error: refuse to run on ${CURRENT_BRANCH}" >&2
+  exit 1
+fi
+
+REMOTE="origin/${BASE_BRANCH}"
+if ! git rev-parse --verify "${REMOTE}" >/dev/null 2>&1; then
+  echo "error: ${REMOTE} not found; run: git fetch origin" >&2
+  exit 1
+fi
+
+BASE="$(git merge-base HEAD "${REMOTE}")"
+CHANGED="$(git diff --name-only "${BASE}..HEAD")"
+UNSTAGED="$(git diff --name-only)"
+UNTRACKED="$(git ls-files --others --exclude-standard)"
+
+plan_output() {
+  echo "Branch: ${CURRENT_BRANCH}"
+  echo "Base: ${REMOTE} (merge-base ${BASE})"
+  echo "Commits since base: $(git rev-list --count "${BASE}..HEAD")"
+  echo ""
+
+  ALL_FILES="$( {
+    git diff --name-only "${BASE}..HEAD"
+    git diff --name-only
+    git diff --cached --name-only
+    git ls-files --others --exclude-standard
+  } | sort -u | grep -v '^$' || true)"
+
+  if [[ -z "${ALL_FILES}" ]]; then
+    echo "No changed files vs ${REMOTE} or working tree."
+    exit 0
+  fi
+
+  FILE_COUNT="$(printf '%s\n' "${ALL_FILES}" | wc -l | tr -d ' ')"
+  echo "Files (${FILE_COUNT} total):"
+  printf '%s\n' "${ALL_FILES}" | awk -F/ '
+    {
+      if (NF >= 2) key = $1 "/" $2
+      else key = $1
+      groups[key] = groups[key] "\n  " $0
+      counts[key]++
+    }
+    END {
+      for (g in counts) printf "  [%d] %s%s\n", counts[g], g, groups[g]
+    }' | sort
+
+  echo ""
+  echo "Suggested slice boundaries (adjust to taste):"
+  # Layers in dependency order — lib before the engine's controllers and views.
+  # (Plain awk only: no gawk-specific asort, so the sort happens in the pipe.)
+  printf '%s\n' "${ALL_FILES}" | awk -F/ '
+    {
+      if ($1 == "lib" && $2 == "localmail") key = "lib"
+      else if ($1 == "lib" || $1 ~ /\.gemspec$/ || $1 == "Gemfile" || $1 == "Gemfile.lock") key = "gem/infra"
+      else if ($1 == "app" && $2 == "controllers") key = "controllers"
+      else if ($1 == "app" && $2 == "views") key = "views"
+      else if ($1 == "config") key = "routes/config"
+      else if ($1 == "spec" && $2 == "dummy") key = "dummy-app"
+      else if ($1 == "spec") key = "specs"
+      else if ($1 == "docs" || $1 == ".claude" || $1 ~ /\.md$/) key = "docs/skills"
+      else if ($1 == "bin" || $1 == ".github" || $1 == "lefthook.yml" || $1 ~ /^\.rubocop/) key = "tooling"
+      else key = $1
+      counts[key]++
+    }
+    END { for (g in counts) printf "  - %s (%d files)\n", g, counts[g] }' \
+    | sort -t'(' -k2 -rn
+}
+
+cmd_prepare() {
+  if ! git diff --cached --quiet; then
+    echo "error: staged changes present; commit or unstage before prepare" >&2
+    exit 1
+  fi
+
+  COUNT="$(git rev-list --count "${BASE}..HEAD")"
+  if [[ "${COUNT}" -eq 0 && -z "${UNSTAGED}" && -z "${UNTRACKED}" ]]; then
+    echo "Nothing to prepare — no commits or working tree changes vs ${REMOTE}."
+    exit 0
+  fi
+
+  if [[ "${DRY_RUN}" == true ]]; then
+    echo "Would: git reset --soft ${BASE}"
+    echo "Then: git reset (unstage all) — all changes left in working tree for slice commits"
+    plan_output
+    exit 0
+  fi
+
+  if [[ "${COUNT}" -gt 0 ]]; then
+    git reset --soft "${BASE}"
+  fi
+  git reset
+
+  echo "Prepared ${CURRENT_BRANCH} for slice commits."
+  echo "All changes are unstaged. Add paths per slice and commit with focused messages."
+  echo ""
+  plan_output
+}
+
+cmd_verify() {
+  echo "Commits since ${REMOTE}:"
+  git log --oneline "${BASE}..HEAD"
+  echo ""
+  while read -r sha; do
+    [[ -z "${sha}" ]] && continue
+    files="$(git diff-tree --no-commit-id --name-only -r "${sha}" | wc -l | tr -d ' ')"
+    echo "  ${sha:0:7} — ${files} files"
+  done < <(git rev-list --reverse "${BASE}..HEAD")
+}
+
+case "${COMMAND}" in
+  plan) plan_output ;;
+  prepare) cmd_prepare ;;
+  verify) cmd_verify ;;
+esac

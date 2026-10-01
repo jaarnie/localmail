@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= content_for?(:title) ? "#{yield(:title)} | Localmail" : "Localmail" %></title>
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%= tag.style render(partial: "localmail/styles", formats: :css), nonce: content_security_policy_nonce %>
+    <%= yield :head %>
+  </head>
+  <body class="lm-body">
+    <header class="lm-header">
+      <div class="lm-container lm-header-inner">
+        <%= link_to "Localmail", root_path, class: "lm-brand" %>
+        <p class="lm-muted lm-small">Captured mail - nothing is delivered</p>
+      </div>
+    </header>
+
+    <main>
+      <%= yield %>
+    </main>
+  </body>
+</html>
