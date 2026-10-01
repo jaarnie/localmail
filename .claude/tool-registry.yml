@@ -98,9 +98,9 @@ release:
   version_file: "lib/localmail/version.rb"
   gem_release: >-
     Bump lib/localmail/version.rb, move CHANGELOG.md's Unreleased entries under the new
-    version, merge to main, then tag vX.Y.Z on main and push the tag. Hosts install from
-    GitHub (`gem "localmail", github: "jaarnie/localmail"`, optionally with tag:).
-    Nothing is published to RubyGems unless the user asks for it explicitly.
+    version, merge to main, then tag vX.Y.Z on main and push the tag. Publish with
+    `gem push localmail-X.Y.Z.gem` from the tagged commit, only when the user confirms;
+    the push needs their RubyGems sign-in and MFA code, so they run it themselves.
   build_check: "gem build localmail.gemspec  (then delete the .gem; *.gem is gitignored)"
 
 issue_start:

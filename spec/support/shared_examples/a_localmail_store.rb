@@ -39,9 +39,9 @@ RSpec.shared_examples "a Localmail store" do
     end
 
     it "round-trips non-ASCII copy" do
-      accented = Mail.new(to: "qa@example.com", subject: "Café", charset: "UTF-8", body: "Prêt à rouler —")
+      accented = Mail.new(to: "qa@example.com", subject: "Café", charset: "UTF-8", body: "Déjà vu —")
 
-      expect(Localmail::Store.find(Localmail::Store.save(accented)).text_body).to include("Prêt à rouler —")
+      expect(Localmail::Store.find(Localmail::Store.save(accented)).text_body).to include("Déjà vu —")
     end
 
     it "returns nil for an unknown id" do

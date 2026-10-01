@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0]
+
 - **Pluggable storage.** `config.store` takes `:active_record` (new default), `:redis`, or a
   store object. The ActiveRecord store needs one table:
   `bin/rails localmail:install:migrations && bin/rails db:migrate`.
@@ -13,7 +15,6 @@
 
 ## [0.1.0]
 
-- Extracted from the Rails application it was first built in.
 - `capture_in_localmail` opt-in macro, included into every mailer.
 - Redis store bounded by TTL and a message cap, namespaced per environment.
 - Mountable inbox with HTML, plain-text and source views and a desktop/mobile preview toggle.

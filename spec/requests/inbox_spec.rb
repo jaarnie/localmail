@@ -2,10 +2,10 @@ require "rails_helper"
 
 RSpec.describe "Inbox" do
   let(:captured_mail) do
-    Mail.new(from: "noreply@example.com", to: "customer@example.com", subject: "Enquiry – café") do
+    Mail.new(from: "noreply@example.com", to: "customer@example.com", subject: "Menu – café") do
       html_part do
         content_type "text/html; charset=UTF-8"
-        body "<p>Prêt à rouler — votre devis</p>"
+        body "<p>Déjà vu — à bientôt</p>"
       end
     end
   end
@@ -21,7 +21,7 @@ RSpec.describe "Inbox" do
 
         get "/mail"
 
-        expect(response.body).to include("Enquiry – café")
+        expect(response.body).to include("Menu – café")
       end
 
       it "says when nothing has been captured" do
@@ -35,7 +35,7 @@ RSpec.describe "Inbox" do
       it "renders the body of a message whose transfer encoding is quoted-printable" do
         get "/mail/#{Localmail::Store.save(captured_mail)}"
 
-        expect(response.body).to include("Prêt à rouler —")
+        expect(response.body).to include("Déjà vu —")
       end
 
       it "redirects to the inbox when the message has expired" do

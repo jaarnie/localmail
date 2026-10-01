@@ -34,10 +34,10 @@ RSpec.describe Localmail::Message do
 
   context "with non-ASCII copy, which forces quoted-printable encoding" do
     let(:mail) do
-      Mail.new(from: "noreply@example.com", to: "qa@example.com", subject: "Enquiry – café") do
+      Mail.new(from: "noreply@example.com", to: "qa@example.com", subject: "Menu – café") do
         html_part do
           content_type "text/html; charset=UTF-8"
-          body "<p>Prêt à rouler — <a href=\"https://example.com\">go</a></p>"
+          body "<p>Déjà vu — <a href=\"https://example.com\">go</a></p>"
         end
       end
     end
@@ -51,7 +51,7 @@ RSpec.describe Localmail::Message do
     end
 
     it "preserves the accented characters" do
-      expect(message.html_body).to include("Prêt à rouler —")
+      expect(message.html_body).to include("Déjà vu —")
     end
 
     it "returns the raw source as UTF-8 so the view can render it" do
