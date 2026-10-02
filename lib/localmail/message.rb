@@ -2,6 +2,17 @@ module Localmail
   # One captured email, rebuilt from its stored raw source, with the parts the inbox
   # renders exposed as UTF-8 strings.
   class Message
+    REFLOW_ON_PHONE = <<~CSS.squish
+      @media (max-width: 480px) {
+        html, body { min-width: 0 !important; }
+        body * { max-width: 100% !important; min-width: 0 !important; }
+        td[width]:not([width$="%"]), th[width]:not([width$="%"]),
+        td[style*="width"]:not([style*="%"]), th[style*="width"]:not([style*="%"]) { width: auto !important; }
+        img { height: auto !important; }
+        body { overflow-wrap: anywhere; }
+      }
+    CSS
+
     attr_reader :id, :mail
 
     delegate :subject, :from, :to, :cc, :bcc, :date, to: :mail
@@ -18,7 +29,7 @@ module Localmail
     def preview_html
       return if html_body.nil?
 
-      %(<base target="_blank">#{html_body})
+      %(<base target="_blank"><style>#{REFLOW_ON_PHONE}</style>#{html_body})
     end
 
     def text_body
