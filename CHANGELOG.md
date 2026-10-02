@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.2]
+
 - **The mobile preview reflows wide emails to fit**, as a phone mail app does: fixed widths
   give way and the text wraps at full size. A fixed-width email no longer scrolls sideways
   in the 390px preview. The desktop preview is unchanged.

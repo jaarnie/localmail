@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    localmail (0.2.1)
+    localmail (0.2.2)
       rails (>= 7.1)
 
 GEM
