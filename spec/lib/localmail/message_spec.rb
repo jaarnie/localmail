@@ -18,6 +18,10 @@ RSpec.describe Localmail::Message do
     expect(message.preview_html).to start_with(%(<base target="_blank">))
   end
 
+  it "reflows the preview to fit a phone-width frame" do
+    expect(message.preview_html).to include(Localmail::Message::REFLOW_ON_PHONE)
+  end
+
   it "has no preview html when the message is text only" do
     text_only = Localmail::Store.find(Localmail::Store.save(Mail.new(to: "qa@example.com", body: "plain")))
 
