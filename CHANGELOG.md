@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.2.1]
+
+- Declare the MIT licence in the gemspec, so RubyGems lists it.
+
 ## [0.2.0]
 
 - **Pluggable storage.** `config.store` takes `:active_record` (new default), `:redis`, or a

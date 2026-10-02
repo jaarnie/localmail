@@ -6,6 +6,7 @@ Gem::Specification.new do |spec|
   spec.authors     = [ "John Arnold" ]
   spec.email       = [ "41114838+jaarnie@users.noreply.github.com" ]
   spec.homepage    = "https://github.com/jaarnie/localmail"
+  spec.license     = "MIT"
   spec.summary     = "An inbox for email captured from deployed Rails environments."
   spec.description = "Localmail swaps ActionMailer's delivery for the mailer actions you name, " \
                      "stores the message in your database or Redis, and serves it from a " \
