@@ -9,8 +9,7 @@ Localmail is a mountable Rails engine that captures outgoing mail into the host'
 where the mail provider will not deliver and filesystem tools such as mailcatcher or
 letter_opener_web cannot work because mail is sent from one process and read from another.
 
-It was extracted from a Rails monolith where it was first built. Everything is namespaced
-under `Localmail`. Storage is pluggable: `Stores::ActiveRecord` (the default, one table) or
+Everything is namespaced under `Localmail`. Storage is pluggable: `Stores::ActiveRecord` (the default, one table) or
 `Stores::Redis`. The suite runs on the dummy app's SQLite and needs nothing running; the
 `:redis` examples skip locally when Redis is not reachable.
 

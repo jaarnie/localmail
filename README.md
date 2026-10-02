@@ -21,7 +21,7 @@ if you prefer) and serves it from a mountable inbox.
 
 ```ruby
 # Gemfile
-gem "localmail", github: "jaarnie/localmail"
+gem "localmail"
 ```
 
 Captured mail is stored in your database by default, in one table:
